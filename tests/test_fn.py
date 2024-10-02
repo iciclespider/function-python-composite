@@ -1,7 +1,6 @@
 import dataclasses
 import unittest
 
-import grpc
 from crossplane.function import logging, resource
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from google.protobuf import duration_pb2 as durationpb
