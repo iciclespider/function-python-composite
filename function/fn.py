@@ -1,5 +1,8 @@
 """A Crossplane composition function."""
 
+import importlib.util
+import types
+
 import grpc
 from crossplane.function import logging, response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
@@ -22,12 +25,26 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
         rsp = response.to(req)
 
-        example = ""
-        if "example" in req.input:
-            example = req.input["example"]
+        if req.input["script"] is None:
+            response.fatal(rsp, "missing script")
+            return rsp
 
-        # TODO: Add your function logic here!
-        response.normal(rsp, f"I was run with input {example}!")
-        log.info("I was run!", input=example)
+        log.debug("Running script", script=req.input["script"])
+        script = load_module("script", req.input["script"])
+        script.compose(req, rsp)
 
         return rsp
+
+
+def load_module(name: str, source: str) -> types.ModuleType:
+    """Load a Python module from the supplied string."""
+    spec = importlib.util.spec_from_loader(name, loader=None)
+    # This should never happen in practice, but it lets type checkers know that
+    # spec won't be None when passed to module_from_spec.
+    if spec is None:
+        err = "cannot create module spec"
+        raise RuntimeError(err)
+
+    module = importlib.util.module_from_spec(spec)
+    exec(source, module.__dict__)  # noqa: S102  # We intend to run arbitrary code.
+    return module

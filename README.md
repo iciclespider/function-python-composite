@@ -1,46 +1,70 @@
-# function-template-python
+# function-python
 
-[![CI](https://github.com/crossplane/function-template-python/actions/workflows/ci.yml/badge.svg)](https://github.com/crossplane/function-template-go/actions/workflows/ci.yml)
+[![CI](https://github.com/crossplane/function-python/actions/workflows/ci.yml/badge.svg)](https://github.com/crossplane/function-python/actions/workflows/ci.yml)
 
-A template for writing a [composition function][functions] in [Python][python].
+A Crossplane composition function that lets you compose resources using Python.
 
-To learn how to use this template:
+Provide a Python script that defines a `compose` function with this signature:
 
-* [Follow the guide to writing a composition function in Python][function guide]
-* [Learn about how composition functions work][functions]
-* [Read the function-sdk-python package documentation][package docs]
+```python
+from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 
-If you just want to jump in and get started:
-
-1. Replace `function-template-python` with your function's name in
-   `package/crossplane.yaml`.
-1. Add your logic to `RunFunction` in `function/fn.py`
-1. Add tests for your logic in `test/test_fn.py`
-1. Update this file, `README.md`, to be about your function!
-
-This template uses [Python][python], [Docker][docker], and the [Crossplane
-CLI][cli] to build functions.
-
-```shell
-# Run the code in development mode, for crossplane beta render
-hatch run development
-
-# Lint the code - see pyproject.toml
-hatch run lint:check
-
-# Run unit tests - see tests/test_fn.py
-hatch run test:unit
-
-# Build the function's runtime image - see Dockerfile
-$ docker build . --tag=runtime
-
-# Build a function package - see package/crossplane.yaml
-$ crossplane xpkg build -f package --embed-runtime-image=runtime
+def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse)
 ```
 
-[functions]: https://docs.crossplane.io/latest/concepts/composition-functions
-[function guide]: https://docs.crossplane.io/knowledge-base/guides/write-a-composition-function-in-python
-[package docs]: https://crossplane.github.io/function-sdk-python
-[python]: https://python.org
-[docker]: https://www.docker.com
-[cli]: https://docs.crossplane.io/latest/cli
+`function-python` passes the `compose` function a request and a response. It
+pre-populates the response with the results of any previous functions in the
+pipeline. The `compose` function should modify the response (`rsp`), for example
+to add composed resources.
+
+The [`RunFunctionRequest` and `RunFunctionResponse` types][buf-types] provided
+by this SDK are generated from a proto3 protocol buffer schema. Their fields
+behave similarly to built-in Python types like lists and dictionaries, but there
+are some differences. Read the [generated code documentation][python-protobuf]
+to familiarize yourself with the the differences.
+
+Your script has access to [function-sdk-python] as the `crossplane.function`
+module. For example you can `import crossplane.function.resource`. It also has
+access to the full Python standard library - use it with care.
+
+```yaml
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: compose-a-resource-with-python
+spec:
+  compositeTypeRef:
+    apiVersion: example.crossplane.io/v1
+    kind: XR
+  mode: Pipeline
+  pipeline:
+  - step: compose-a-resource-with-python
+    functionRef:
+      name: function-python
+    input:
+      apiVersion: python.fn.crossplane.io/v1beta1
+      kind: Script
+      script: |
+        from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+
+        def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+            rsp.desired.resources["bucket"].resource.update({
+                "apiVersion": "s3.aws.upbound.io/v1beta2",
+                "kind": "Bucket",
+                "spec": {
+                    "forProvider": {
+                        "region": req.observed.composite.resource["spec"]["region"]
+                    }
+                },
+            })
+            rsp.desired.resources["bucket"].ready = True
+```
+
+`function-python` is best for very simple cases. If writing Python inline of
+YAML becomes unwieldy, consider building a Python function using
+[function-template-python].
+
+[function-sdk-python]: https://github.com/crossplane/function-sdk-python
+[buf-types]: https://buf.build/crossplane/crossplane/docs/main:apiextensions.fn.proto.v1
+[python-protobuf]: https://protobuf.dev/reference/python/python-generated/
+[function-template-python]: https://github.com/crossplane/function-template-python

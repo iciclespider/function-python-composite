@@ -1,17 +1,30 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: function-template-python
+  name: compose-a-resource-with-python
 spec:
   compositeTypeRef:
     apiVersion: example.crossplane.io/v1
     kind: XR
   mode: Pipeline
   pipeline:
-  - step: run-the-template
+  - step: compose-a-resource-with-python
     functionRef:
-      name: function-template-python
+      name: function-python
     input:
-      apiVersion: template.fn.crossplane.io/v1beta1
-      kind: Input
-      example: "Hello world"
+      apiVersion: python.fn.crossplane.io/v1beta1
+      kind: Script
+      script: |
+        from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+
+        def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
+            rsp.desired.resources["bucket"].resource.update({
+                "apiVersion": "s3.aws.upbound.io/v1beta2",
+                "kind": "Bucket",
+                "spec": {
+                    "forProvider": {
+                        "region": req.observed.composite.resource["spec"]["region"]
+                    }
+                },
+            })
+            rsp.desired.resources["bucket"].ready = True
