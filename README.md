@@ -1,6 +1,6 @@
 # function-python
 
-[![CI](https://github.com/negz/function-python/actions/workflows/ci.yml/badge.svg)](https://github.com/negz/function-python/actions/workflows/ci.yml)
+[![CI](https://github.com/crossplane-contrib/function-python/actions/workflows/ci.yml/badge.svg)](https://github.com/crossplane-contrib/function-python/actions/workflows/ci.yml)
 
 A Crossplane composition function that lets you compose resources using Python.
 
