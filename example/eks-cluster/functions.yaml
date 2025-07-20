@@ -1,11 +1,9 @@
----
 apiVersion: pkg.crossplane.io/v1beta1
 kind: Function
 metadata:
-  name: function-python
-  annotations:
+  name: function-python-composite
+  annotations: 
     # This tells crossplane beta render to connect to the function locally.
     render.crossplane.io/runtime: Development
 spec:
-  # This is ignored when using the Development runtime.
-  package: function-python
+  package: xpkg.upbound.io/crossplane-contrib/function-python-composite:v0.1.0

@@ -3,8 +3,9 @@
 # It's important that this is Debian 12 to match the distroless image.
 FROM debian:12-slim AS build
 
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+#RUN --mount=type=cache,target=/var/lib/apt/lists \
+#    --mount=type=cache,target=/var/cache/apt \
+RUN \
     rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update \
     && apt-get install --no-install-recommends --yes python3-venv git
@@ -18,14 +19,17 @@ ENV PYTHONDONTWRITEBYTECODE=true
 # Debian doesn't have a hatch package, and it won't let you install one globally
 # using pip.
 WORKDIR /build
-RUN --mount=target=. \
-    --mount=type=cache,target=/root/.cache/pip \
+#RUN --mount=target=. \
+#    --mount=type=cache,target=/root/.cache/pip \
+COPY . /build
+RUN \
     python3 -m venv /venv/build \
     && /venv/build/bin/pip install hatch \
     && /venv/build/bin/hatch build -t wheel /whl
 
 # Create a fresh venv and install only the function wheel into it.
-RUN --mount=type=cache,target=/root/.cache/pip \
+#RUN --mount=type=cache,target=/root/.cache/pip \
+RUN \
     python3 -m venv /venv/fn \
     && /venv/fn/bin/pip install /whl/*.whl
 
@@ -33,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # the same as in the build stage, to avoid shebang paths and symlinks breaking. 
 FROM gcr.io/distroless/python3-debian12 AS image
 WORKDIR /
-COPY --from=build /venv/fn /venv/fn
-EXPOSE 9443
 USER nonroot:nonroot
+COPY --from=build --chown=nonroot:nonroot /venv/fn /venv/fn
+EXPOSE 9443
 ENTRYPOINT ["/venv/fn/bin/function"]

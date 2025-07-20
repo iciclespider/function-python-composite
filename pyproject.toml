@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "function"
-description = 'A composition function'
+description = 'A Crossplane Function which composes Composites'
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = "Apache-2.0"
@@ -18,20 +18,20 @@ classifiers = [
 ]
 
 dependencies = [
-  "crossplane-function-sdk-python==0.6.0",
-  "click==8.1.8",
-  "grpcio==1.71.0",
+  "crossplane-function-sdk-python==0.8.0",
+  "pip==25.1.1",
+  "pyyaml==6.0.2",
 ]
 
 dynamic = ["version"]
 
 [project.urls]
-Documentation = "https://github.com/crossplane-contrib/function-python#readme"
-Issues = "https://github.com/crossplane-contrib/function-python/issues"
-Source = "https://github.com/crossplane-contrib/function-python"
+Documentation = "https://github.com/crossplane-contrib/function-python-composite#readme"
+Issues = "https://github.com/crossplane-contrib/function-python-composite/issues"
+Source = "https://github.com/crossplane-contrib/function-python-composite"
 
 [project.scripts]
-function = "function.main:cli"
+function = "function.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["function"]

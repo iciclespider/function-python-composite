@@ -1,31 +1,51 @@
-# function-python
+# function-python-composite
 
-[![CI](https://github.com/crossplane-contrib/function-python/actions/workflows/ci.yml/badge.svg)](https://github.com/crossplane-contrib/function-python/actions/workflows/ci.yml)
+A Crossplane composition function that lets you compose Composites using python.
 
-A Crossplane composition function that lets you compose resources using Python.
-
-Provide a Python script that defines a `compose` function with this signature:
+Provide a Python script that implements a Composite class that implements
+a compose method.
 
 ```python
-from crossplane.function.proto.v1 import run_function_pb2 as fnv1
-
-def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse)
+class Composite(BaseComposite):
+  def compose(self):
 ```
 
-`function-python` passes the `compose` function a request and a response. It
-pre-populates the response with the results of any previous functions in the
-pipeline. The `compose` function should modify the response (`rsp`), for example
-to add composed resources.
+The `function-python-composite` BaseComposite class provides the following fields:
 
-The [`RunFunctionRequest` and `RunFunctionResponse` types][buf-types] provided
-by this SDK are generated from a proto3 protocol buffer schema. Their fields
-behave similarly to built-in Python types like lists and dictionaries, but there
-are some differences. Read the [generated code documentation][python-protobuf]
-to familiarize yourself with the the differences.
+| Field | Description |
+| ----- | ----------- |
+| self.context | The composition context |
+| self.environment | The composition environment |
+| self.extras | Access to extra resources |
+| self.credentials | Access to the composite's credentials |
+| self.apiVersion | The composite apiVersion |
+| self.kind | The composite kind |
+| self.metadata | The composite metadata |
+| self.spec | The composite spec |
+| self.resources | The composite manageed resources |
+| self.status | The composite status |
+| self.conditions | The composite conditions |
+| self.connection | The composite connection details |
+| self.ready | The composite ready state |
+| self.logger | A logger to emit log messages in the function pod's log |
 
-Your script has access to [function-sdk-python] as the `crossplane.function`
-module. For example you can `import crossplane.function.resource`. It also has
-access to the full Python standard library - use it with care.
+Creating and accessing resources using `self.resources` returns a python
+object with the following fields:
+
+| Field | Description |
+| ----- | ----------- |
+| resource.name | The managed resource name within the composite |
+| resource.apiVersion | The resource apiVersion |
+| resource.kind | The resource kind |
+| resource.externalName | The resource external name |
+| resource.metadata | The resource metadata |
+| resource.spec | The resource spec |
+| resource.status | The resource status |
+| resource.conditions | The resource conditions |
+| resource.connection | The resource connection details |
+| resource.ready | The resource ready state |
+
+The following example creates an AWS S3 Bucket:
 
 ```yaml
 apiVersion: apiextensions.crossplane.io/v1
@@ -40,29 +60,21 @@ spec:
   pipeline:
   - step: compose-a-resource-with-python
     functionRef:
-      name: function-python
+      name: function-python-composite
     input:
       apiVersion: python.fn.crossplane.io/v1beta1
-      kind: Script
-      script: |
-        from crossplane.function.proto.v1 import run_function_pb2 as fnv1
-
-        def compose(req: fnv1.RunFunctionRequest, rsp: fnv1.RunFunctionResponse):
-            rsp.desired.resources["bucket"].resource.update({
-                "apiVersion": "s3.aws.upbound.io/v1beta2",
-                "kind": "Bucket",
-                "spec": {
-                    "forProvider": {
-                        "region": req.observed.composite.resource["spec"]["region"]
-                    }
-                },
-            })
-            rsp.desired.resources["bucket"].ready = True
+      kind: Composite
+      composite: |
+        class Composite(BaseComposite):
+          def compose(self):
+            resource = self.resources.bucket('s3.aws.upbound.io/v1beta2', 'Bucekt')
+            resource.spec.forProvider.region = self.spec.region
+            resource.ready = True
 ```
 
-`function-python` is best for very simple cases. If writing Python inline of
-YAML becomes unwieldy, consider building a Python function using
-[function-template-python].
+In the `example` directory are most of the function-go-template examples implemented
+using function-python-composite. In addition, the eks-cluster example is a complex
+example composing many resources.
 
 [function-sdk-python]: https://github.com/crossplane/function-sdk-python
 [buf-types]: https://buf.build/crossplane/crossplane/docs/main:apiextensions.fn.proto.v1

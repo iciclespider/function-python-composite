@@ -1,0 +1,22 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: example-function-from-yaml
+spec:
+  compositeTypeRef:
+    apiVersion: example.crossplane.io/v1beta1
+    kind: XR
+  mode: Pipeline
+  pipeline:
+
+  - step: render-templates
+    functionRef:
+      name: function-python-composite
+    input:
+      apiVersion: python.fn.crossplane.io/v1beta1
+      kind: Composite
+      composite: |
+        import yaml
+        class Composite(BaseComposite):
+          def compose(self):
+            self.status.dummy = yaml.safe_load(self.spec.yamlBlob)['key2']

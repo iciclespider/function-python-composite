@@ -1,12 +1,16 @@
 """A Crossplane composition function."""
 
-import importlib.util
-import types
+import asyncio
+import datetime
+import inspect
 
 import grpc
-from crossplane.function import logging, response
+import crossplane.function.logging
+import crossplane.function.response
 from crossplane.function.proto.v1 import run_function_pb2 as fnv1
 from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
+
+import function.composite
 
 
 class FunctionRunner(grpcv1.FunctionRunnerService):
@@ -14,37 +18,82 @@ class FunctionRunner(grpcv1.FunctionRunnerService):
 
     def __init__(self):
         """Create a new FunctionRunner."""
-        self.log = logging.get_logger()
+        self.logger = crossplane.function.logging.get_logger()
+        self.modules = {}
 
     async def RunFunction(
-        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext
+        self, request: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext
     ) -> fnv1.RunFunctionResponse:
         """Run the function."""
-        log = self.log.bind(tag=req.meta.tag)
-        log.info("Running function")
+        composite = request.observed.composite.resource
+        logger = self.logger.bind(
+            apiVersion=composite['apiVersion'],
+            kind=composite['kind'],
+            name=composite['metadata']['name'],
+        )
+        if request.meta.tag:
+            logger = logger.bind(tag=request.meta.tag)
+        input = request.input
+        if 'step' in input:
+            logger = logger.bind(step=input['step'])
+        ttl = crossplane.function.response.DEFAULT_TTL
+        if 'ttl' in input:
+            ttl = input['ttl']
+            try:
+                ttl = datetime.timedelta(seconds=int(ttl))
+            except ValueError:
+                try:
+                    ttl = [*map(int, ttl.split(':'))]
+                    if len(ttl) == 1:
+                        ttl = datetime.timedelta(seconds=ttl[0])
+                    elif len(ttl) == 2:
+                        ttl = datetime.timedelta(minutes=ttl[0], seconds=ttl[1])
+                    elif len(ttl) == 3:
+                        ttl = datetime.timedelta(hours=ttl[0], minutes=ttl[1], seconds=ttl[2])
+                except ValueError:
+                    pass
+        logger.debug(f"Running, ttl: {ttl}")
+        response = crossplane.function.response.to(request, ttl)
 
-        rsp = response.to(req)
+        if 'composite' not in input:
+            logger.error('Missing "composite" input')
+            crossplane.function.response.fatal(response, 'Missing "composite" input')
+            return response
+        composite = input['composite']
 
-        if req.input["script"] is None:
-            response.fatal(rsp, "missing script")
-            return rsp
+        module = self.modules.get(composite)
+        if not module:
+            module = Module()
+            try:
+                exec(composite, module.__dict__)
+            except Exception as e:
+                crossplane.function.response.fatal(response, f"Exec exception: {e}")
+                logger.exception('Exec exception')
+                return response
+            if not hasattr(module, 'Composite') or not inspect.isclass(module.Composite):
+                logger.error('Composite did not define "class Composite"')
+                crossplane.function.response.fatal(response, 'Function did not define "class Composite')
+                return response
+            self.modules[composite] = module
 
-        log.debug("Running script", script=req.input["script"])
-        script = load_module("script", req.input["script"])
-        script.compose(req, rsp)
+        try:
+            composite = module.Composite(request, response, logger)
+            result = composite.compose()
+            if asyncio.iscoroutine(result):
+                await result
+            if composite.request.input['auto-ready'] != False:
+                for name, resource in composite.resources:
+                    if resource.ready is None:
+                        if resource.conditions.Ready.status:
+                            resource.ready = True
+        except Exception as e:
+            crossplane.function.response.fatal(response, f"Run exception: {e}")
+            logger.exception('Run exception')
+            return response
+        logger.debug('Returning')
+        return response
 
-        return rsp
 
-
-def load_module(name: str, source: str) -> types.ModuleType:
-    """Load a Python module from the supplied string."""
-    spec = importlib.util.spec_from_loader(name, loader=None)
-    # This should never happen in practice, but it lets type checkers know that
-    # spec won't be None when passed to module_from_spec.
-    if spec is None:
-        err = "cannot create module spec"
-        raise RuntimeError(err)
-
-    module = importlib.util.module_from_spec(spec)
-    exec(source, module.__dict__)  # noqa: S102  # We intend to run arbitrary code.
-    return module
+class Module:
+    def __init__(self):
+        self.BaseComposite = function.composite.BaseComposite
